@@ -13,8 +13,10 @@ const CHANGE_TYPE_ICONS = {
   remove: '🗑️',
 };
 
-export default function SectionDiff({ section, accepted, rejected, onAccept, onReject }) {
+export default function SectionDiff({ section, accepted, rejected, onAccept, onReject, onSaveEdit }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftText, setDraftText] = useState(section.newText || '');
   const impact = IMPACT_COLORS[section.impact] || IMPACT_COLORS.medium;
 
   const borderColor = accepted
@@ -58,14 +60,37 @@ export default function SectionDiff({ section, accepted, rejected, onAccept, onR
             </div>
             <div style={styles.diffPane}>
               <div style={{ ...styles.paneLabel, color: 'var(--green)' }}>After (suggested)</div>
-              <pre style={{ ...styles.pre, background: 'rgba(34,197,94,0.04)', borderColor: 'rgba(34,197,94,0.12)' }}>
-                {section.newText || '(empty)'}
-              </pre>
+              {editing ? (
+                <textarea
+                  style={styles.textarea}
+                  value={draftText}
+                  onChange={(e) => setDraftText(e.target.value)}
+                />
+              ) : (
+                <pre style={{ ...styles.pre, background: 'rgba(34,197,94,0.04)', borderColor: 'rgba(34,197,94,0.12)' }}>
+                  {section.newText || '(empty)'}
+                </pre>
+              )}
             </div>
           </div>
 
           {/* Actions */}
           <div style={styles.actions}>
+            {!accepted && !rejected && (
+              <button
+                style={styles.btnEdit}
+                onClick={async () => {
+                  if (editing) {
+                    await onSaveEdit(section.id, draftText);
+                    setEditing(false);
+                    return;
+                  }
+                  setEditing(true);
+                }}
+              >
+                {editing ? 'Save edit' : 'Edit'}
+              </button>
+            )}
             {accepted ? (
               <span style={styles.acceptedTag}><Check size={12} /> Accepted</span>
             ) : rejected ? (
@@ -150,6 +175,20 @@ const styles = {
     border: '0.5px solid', borderRadius: 'var(--radius-sm)',
     padding: '10px 12px', minHeight: 60
   },
+  textarea: {
+    width: '100%',
+    minHeight: 112,
+    resize: 'vertical',
+    background: 'rgba(34,197,94,0.04)',
+    border: '0.5px solid rgba(34,197,94,0.12)',
+    borderRadius: 'var(--radius-sm)',
+    padding: '10px 12px',
+    color: 'var(--text-secondary)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: 12,
+    lineHeight: 1.7,
+    outline: 'none'
+  },
   actions: {
     display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px'
   },
@@ -158,6 +197,9 @@ const styles = {
   },
   btnReject: {
     ...btnBase, background: 'var(--red-bg)', color: 'var(--red)'
+  },
+  btnEdit: {
+    ...btnBase, background: 'var(--bg-input)', color: 'var(--text-secondary)'
   },
   acceptedTag: {
     display: 'inline-flex', alignItems: 'center', gap: 5,

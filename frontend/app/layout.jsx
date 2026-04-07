@@ -1,4 +1,6 @@
 import './globals.css';
+import SignOutButton from './signout-button.jsx';
+import AppToaster from './toaster.jsx';
 
 export const metadata = {
   title: 'Auto Doc Updater',
@@ -19,7 +21,14 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body>
-        {children}
+        <div style={{ minHeight: '100vh' }}>
+          {/* Keep sign-out available on authenticated pages; login page can ignore it */}
+          <div style={{ maxWidth: 860, margin: '0 auto', padding: '12px 1.5rem 0', display: 'flex' }}>
+            <SignOutButton />
+          </div>
+          {children}
+          <AppToaster />
+        </div>
       </body>
     </html>
   );

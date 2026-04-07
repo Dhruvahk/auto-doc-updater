@@ -8,17 +8,17 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
-  --bg: #0d0f12;
-  --bg-card: #141720;
-  --bg-hover: #1c2030;
-  --bg-input: #1a1d27;
+  --bg: #090b12;
+  --bg-card: #12182a;
+  --bg-hover: #1a2337;
+  --bg-input: #161f31;
 
-  --border: rgba(255,255,255,0.07);
+  --border: rgba(148,163,184,0.18);
   --border-focus: rgba(99,102,241,0.6);
 
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
-  --text-muted: #475569;
+  --text-muted: #64748b;
 
   --indigo: #6366f1;
   --indigo-hover: #818cf8;
@@ -39,9 +39,9 @@
   --blue: #3b82f6;
   --blue-bg: rgba(59,130,246,0.08);
 
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 18px;
 
   color-scheme: dark;
 }
@@ -52,10 +52,63 @@ html, body, #root {
 
 body {
   font-family: var(--font-sans);
-  background: var(--bg);
+  background:
+    radial-gradient(1000px 520px at 10% -10%, rgba(99,102,241,0.22), transparent 60%),
+    radial-gradient(800px 420px at 90% -20%, rgba(59,130,246,0.16), transparent 60%),
+    var(--bg);
   color: var(--text-primary);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* 3D ambient blobs */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  border-radius: 999px;
+  filter: blur(22px);
+  transform: translateZ(0);
+  pointer-events: none;
+}
+
+body::before {
+  width: 420px;
+  height: 420px;
+  top: 8%;
+  left: -120px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(129,140,248,0.55), rgba(59,130,246,0.08) 70%);
+  box-shadow:
+    inset -30px -40px 80px rgba(255,255,255,0.05),
+    30px 40px 80px rgba(37,99,235,0.2);
+  animation: floatBlobA 16s ease-in-out infinite;
+}
+
+body::after {
+  width: 380px;
+  height: 380px;
+  bottom: 6%;
+  right: -110px;
+  background:
+    radial-gradient(circle at 70% 30%, rgba(56,189,248,0.45), rgba(99,102,241,0.06) 72%);
+  box-shadow:
+    inset 20px -20px 70px rgba(255,255,255,0.05),
+    -24px 34px 80px rgba(14,116,144,0.2);
+  animation: floatBlobB 20s ease-in-out infinite;
+}
+
+@keyframes floatBlobA {
+  0%, 100% { transform: translateY(0px) translateX(0px) scale(1); }
+  50% { transform: translateY(-18px) translateX(16px) scale(1.04); }
+}
+
+@keyframes floatBlobB {
+  0%, 100% { transform: translateY(0px) translateX(0px) scale(1); }
+  50% { transform: translateY(20px) translateX(-14px) scale(1.05); }
 }
 
 /* Scrollbar */

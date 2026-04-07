@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { runAnalysis, createDocsPR as apiCreatePR } from '../utils/api.js';
+import { supabase } from '../lib/supabaseClient.js';
 
 export const STAGES = {
   IDLE: 'idle',
@@ -27,6 +28,42 @@ export function useAnalysis() {
   const [rejectedIds, setRejectedIds] = useState(new Set());
   const [prCreating, setPrCreating] = useState(false);
   const [createdPR, setCreatedPR] = useState(null);
+  const [runId, setRunId] = useState(null);
+
+  const persistRun = useCallback(async (repoUrl, prNumber, data) => {
+    try {
+      const { data: userRes } = await supabase.auth.getUser();
+      const userId = userRes?.user?.id;
+      if (!userId) return null;
+
+      const { data: runRow, error: runErr } = await supabase
+        .from('analysis_runs')
+        .insert({
+          user_id: userId,
+          repo_url: repoUrl,
+          pr_number: Number(prNumber)
+        })
+        .select('id')
+        .single();
+      if (runErr || !runRow?.id) return null;
+
+      const rows = (data.analysis.sections || []).map((s) => ({
+        run_id: runRow.id,
+        heading: s.heading || 'Untitled Section',
+        old_text: s.oldText || '',
+        new_text: s.newText || '',
+        impact: s.impact || 'medium',
+        confidence: Number(s.confidence) || 0,
+        accepted: false
+      }));
+      if (rows.length > 0) {
+        await supabase.from('section_suggestions').insert(rows);
+      }
+      return runRow.id;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const go = useCallback(async (repoUrl, prNumber) => {
     setError(null);
@@ -34,6 +71,7 @@ export function useAnalysis() {
     setAcceptedIds(new Set());
     setRejectedIds(new Set());
     setCreatedPR(null);
+    setRunId(null);
 
     // Simulate staged progress (the API does it all in one call,
     // so we animate through stages while waiting)
@@ -55,9 +93,15 @@ export function useAnalysis() {
       clearTimeout(timer1);
       clearTimeout(timer2);
       setResult(data);
+      const newRunId = await persistRun(repoUrl, prNumber, data);
+      setRunId(newRunId);
       setStage(STAGES.DONE);
       setStageLabel(STAGE_LABELS[STAGES.DONE]);
-      toast.success(`Found ${data.analysis.sections.length} sections to update`);
+      if ((data.analysis.sections || []).length === 0) {
+        toast.success('No README updates needed for this PR.');
+      } else {
+        toast.success(`Found ${data.analysis.sections.length} sections to update`);
+      }
     } catch (err) {
       clearTimeout(timer1);
       clearTimeout(timer2);
@@ -65,17 +109,33 @@ export function useAnalysis() {
       setStage(STAGES.ERROR);
       toast.error(err.message);
     }
-  }, []);
+  }, [persistRun]);
 
-  const accept = useCallback((id) => {
+  const accept = useCallback(async (id) => {
     setAcceptedIds(prev => { const s = new Set(prev); s.add(id); return s; });
     setRejectedIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-  }, []);
+    if (!runId || !result) return;
+    const section = result.analysis.sections.find(s => s.id === id);
+    if (!section) return;
+    await supabase
+      .from('section_suggestions')
+      .update({ accepted: true })
+      .eq('run_id', runId)
+      .eq('heading', section.heading);
+  }, [runId, result]);
 
-  const reject = useCallback((id) => {
+  const reject = useCallback(async (id) => {
     setRejectedIds(prev => { const s = new Set(prev); s.add(id); return s; });
     setAcceptedIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-  }, []);
+    if (!runId || !result) return;
+    const section = result.analysis.sections.find(s => s.id === id);
+    if (!section) return;
+    await supabase
+      .from('section_suggestions')
+      .update({ accepted: false })
+      .eq('run_id', runId)
+      .eq('heading', section.heading);
+  }, [runId, result]);
 
   const acceptAll = useCallback(() => {
     if (!result) return;
@@ -122,7 +182,31 @@ export function useAnalysis() {
     setAcceptedIds(new Set());
     setRejectedIds(new Set());
     setCreatedPR(null);
+    setRunId(null);
   }, []);
+
+  const updateSectionText = useCallback(async (id, newText) => {
+    setResult(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        analysis: {
+          ...prev.analysis,
+          sections: prev.analysis.sections.map((s) =>
+            s.id === id ? { ...s, newText } : s
+          )
+        }
+      };
+    });
+    if (!runId || !result) return;
+    const section = result.analysis.sections.find(s => s.id === id);
+    if (!section) return;
+    await supabase
+      .from('section_suggestions')
+      .update({ new_text: newText })
+      .eq('run_id', runId)
+      .eq('heading', section.heading);
+  }, [runId, result]);
 
   // Derive the patched README from accepted changes
   const patchedReadme = (() => {
@@ -142,6 +226,6 @@ export function useAnalysis() {
     acceptedIds, rejectedIds,
     prCreating, createdPR,
     patchedReadme,
-    go, accept, reject, acceptAll, resetAll, createPR, reset
+    go, accept, reject, acceptAll, resetAll, createPR, reset, updateSectionText
   };
 }

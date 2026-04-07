@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import InputForm from './components/InputForm.jsx';
 import PipelineProgress from './components/PipelineProgress.jsx';
 import SectionDiff from './components/SectionDiff.jsx';
@@ -8,18 +9,37 @@ import { GitMerge, RotateCcw, ExternalLink } from 'lucide-react';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('diffs');
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
   const {
     stage, stageLabel, result, error,
     acceptedIds, rejectedIds,
     prCreating, createdPR, patchedReadme,
-    go, accept, reject, acceptAll, resetAll, createPR, reset
+    go, accept, reject, acceptAll, resetAll, createPR, reset, updateSectionText
   } = useAnalysis();
 
   const isRunning = [STAGES.FETCHING_PR, STAGES.FETCHING_README, STAGES.ANALYZING].includes(stage);
   const isDone = stage === STAGES.DONE;
+  const cardTransform = useMemo(
+    () => `perspective(1200px) rotateX(${tilt.y}deg) rotateY(${tilt.x}deg)`,
+    [tilt.x, tilt.y]
+  );
+
+  function handleMouseMove(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const dx = (e.clientX - rect.left) / rect.width - 0.5;
+    const dy = (e.clientY - rect.top) / rect.height - 0.5;
+    setTilt({
+      x: Math.max(-3, Math.min(3, dx * 4)),
+      y: Math.max(-3, Math.min(3, -dy * 4)),
+    });
+  }
 
   return (
-    <div style={{ minHeight: '100vh', padding: '2rem 1.5rem 4rem' }}>
+    <div
+      style={{ minHeight: '100vh', padding: '2.5rem 1.5rem 4rem' }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => setTilt({ x: 0, y: 0 })}
+    >
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
@@ -34,6 +54,7 @@ export default function App() {
           <h1 style={styles.h1}>Auto Doc Updater</h1>
           <p style={styles.subtitle}>LLM-powered README sync for GitHub pull requests</p>
         </div>
+        <Link href="/history" style={styles.historyLink}>History</Link>
         {(isDone || error) && (
           <button onClick={reset} style={styles.resetBtn}>
             <RotateCcw size={13} /> New analysis
@@ -41,7 +62,7 @@ export default function App() {
         )}
       </header>
 
-      <main style={styles.main}>
+      <main style={{ ...styles.main, transform: cardTransform }}>
 
         {/* ── IDLE: show input form ── */}
         {stage === STAGES.IDLE && (
@@ -63,6 +84,11 @@ export default function App() {
         {/* ── DONE: show results ── */}
         {isDone && result && (
           <>
+            {result.analysis.sections.length === 0 && (
+              <div style={styles.noUpdatesBox}>
+                No documentation updates needed. This PR does not impact README sections.
+              </div>
+            )}
             <SummaryBar
               pr={result.pr}
               analysis={result.analysis}
@@ -124,6 +150,7 @@ export default function App() {
                     rejected={rejectedIds.has(s.id)}
                     onAccept={accept}
                     onReject={reject}
+                    onSaveEdit={updateSectionText}
                   />
                 ))}
               </>
@@ -221,33 +248,57 @@ export default function App() {
 
 const styles = {
   header: {
-    maxWidth: 860, margin: '0 auto 2.5rem',
+    maxWidth: 980, margin: '0 auto 2rem',
     display: 'flex', alignItems: 'center', gap: 12
   },
   logoBox: {
-    width: 36, height: 36, background: 'var(--indigo)',
+    width: 40, height: 40, background: 'linear-gradient(135deg, #6366f1, #3b82f6)',
     borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center',
-    flexShrink: 0
+    flexShrink: 0,
+    boxShadow: '0 10px 24px rgba(99,102,241,0.35)'
   },
-  h1: { fontSize: 18, fontWeight: 600, letterSpacing: '-0.3px' },
+  h1: { fontSize: 24, fontWeight: 700, letterSpacing: '-0.6px' },
   subtitle: { fontSize: 12, color: 'var(--text-muted)', marginTop: 1 },
-  resetBtn: {
-    marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
-    background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-    borderRadius: 'var(--radius-sm)', padding: '6px 12px',
-    color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer',
-    fontFamily: 'var(--font-sans)'
+  historyLink: {
+    marginLeft: 'auto',
+    marginRight: 10,
+    color: 'var(--text-secondary)',
+    textDecoration: 'none',
+    fontSize: 13,
+    padding: '7px 10px',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid rgba(148,163,184,0.25)',
+    background: 'rgba(18,24,42,0.45)',
+    backdropFilter: 'blur(8px)'
   },
-  main: { maxWidth: 860, margin: '0 auto' },
+  resetBtn: {
+    display: 'flex', alignItems: 'center', gap: 6,
+    background: 'rgba(18,24,42,0.45)', border: '1px solid rgba(148,163,184,0.25)',
+    borderRadius: 'var(--radius-sm)', padding: '8px 14px',
+    color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer',
+    fontFamily: 'var(--font-sans)',
+    backdropFilter: 'blur(8px)'
+  },
+  main: { maxWidth: 980, margin: '0 auto', transition: 'transform 0.16s ease-out' },
   errorBox: {
-    background: 'var(--red-bg)', border: '0.5px solid var(--red-border)',
+    background: 'rgba(127,29,29,0.28)', border: '1px solid var(--red-border)',
     borderRadius: 'var(--radius)', padding: '12px 16px',
     color: 'var(--red)', fontSize: 14, lineHeight: 1.6
   },
+  noUpdatesBox: {
+    background: 'rgba(34,197,94,0.12)',
+    border: '1px solid var(--green-border)',
+    borderRadius: 'var(--radius)',
+    padding: '10px 14px',
+    color: '#bbf7d0',
+    fontSize: 13,
+    marginBottom: 12
+  },
   tabs: {
     display: 'flex', gap: 2, margin: '1rem 0',
-    background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-    borderRadius: 'var(--radius)', padding: 3
+    background: 'rgba(18,24,42,0.42)', border: '1px solid rgba(148,163,184,0.2)',
+    borderRadius: 'var(--radius)', padding: 4,
+    backdropFilter: 'blur(10px)'
   },
   tab: {
     flex: 1, fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 500,
@@ -275,8 +326,10 @@ const styles = {
     fontSize: 12, color: 'var(--text-muted)', marginLeft: 4
   },
   codeCard: {
-    background: 'var(--bg-card)', border: '0.5px solid var(--border)',
-    borderRadius: 'var(--radius-lg)', padding: '1rem 1.25rem'
+    background: 'rgba(18,24,42,0.42)', border: '1px solid rgba(148,163,184,0.24)',
+    borderRadius: 'var(--radius-lg)', padding: '1rem 1.25rem',
+    boxShadow: '0 20px 44px rgba(2,6,23,0.35)',
+    backdropFilter: 'blur(12px)'
   },
   fileChips: {
     display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14
@@ -298,10 +351,12 @@ const styles = {
     fontSize: 12, color: 'var(--text-muted)', marginBottom: 12
   },
   prBox: {
-    marginTop: '1.5rem', border: '0.5px solid',
+    marginTop: '1.5rem', border: '1px solid',
     borderRadius: 'var(--radius-lg)', padding: '1rem 1.25rem',
     display: 'flex', alignItems: 'center', gap: 14,
-    transition: 'all 0.2s'
+    transition: 'all 0.2s',
+    boxShadow: '0 14px 30px rgba(2,6,23,0.28)',
+    backdropFilter: 'blur(10px)'
   },
   prBoxTitle: { fontSize: 14, fontWeight: 500, color: 'var(--text-primary)' },
   prBoxSub: { fontSize: 12, color: 'var(--text-muted)', marginTop: 4, lineHeight: 1.5 },
