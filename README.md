@@ -223,4 +223,5 @@ Frontend: display before/after per section
 ## License
 
 MIT
+
 >>>>>>> 7638d29 (Initial commit)
