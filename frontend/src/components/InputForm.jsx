@@ -121,12 +121,20 @@ export default function InputForm({ onSubmit, loading }) {
 
     setPrOptions(unique);
 
-    if (unique.length > 0) {
-      setPrNumber(String(unique[0].prNumber));
-    } else {
-      setPrNumber('');
+    // Only auto-fill PR number when the repoUrl exactly matches a known repo option.
+    // This prevents annoying overwrites while the user is typing/pasting a URL.
+    const exactMatch = repoOptions.some(
+      (r) => r.repoUrl === repoUrl.trim().replace(/\.git$/, '')
+    );
+
+    if (exactMatch) {
+      if (unique.length > 0) {
+        setPrNumber(String(unique[0].prNumber));
+      } else {
+        setPrNumber('');
+      }
     }
-  }, [repoUrl, runs]);
+  }, [repoUrl, runs, repoOptions]);
 
   const canShowExamples = useMemo(
     () => !historyLoading && repoOptions.length === 0,
@@ -166,64 +174,48 @@ export default function InputForm({ onSubmit, loading }) {
         <form onSubmit={handleSubmit}>
           <div style={styles.fieldGroup}>
             <label style={styles.label}>Repository</label>
-            {historyLoading ? (
-              <div style={styles.skeleton}>Loading your repos...</div>
-            ) : repoOptions.length > 0 ? (
-              <select
-                style={styles.select}
-                value={repoUrl}
-                onChange={(e) => setRepoUrl(e.target.value)}
-                disabled={loading}
-              >
-                {repoOptions.map((r) => (
-                  <option key={r.repoUrl} value={r.repoUrl}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                style={styles.input}
-                type="text"
-                value={repoUrl}
-                onChange={e => setRepoUrl(e.target.value)}
-                placeholder="https://github.com/owner/repo"
-                disabled={loading}
-                onFocus={e => e.target.style.borderColor = 'var(--border-focus)'}
-                onBlur={e => e.target.style.borderColor = 'var(--border)'}
-              />
-            )}
+            {historyLoading && <div style={styles.skeleton}>Loading your repos...</div>}
+            <input
+              style={styles.input}
+              type="text"
+              value={repoUrl}
+              onChange={(e) => setRepoUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+              disabled={loading}
+              list="repo-suggestions"
+              onFocus={e => e.target.style.borderColor = 'var(--border-focus)'}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'}
+            />
+            <datalist id="repo-suggestions">
+              {repoOptions.map((r) => (
+                <option key={r.repoUrl} value={r.repoUrl}>
+                  {r.label}
+                </option>
+              ))}
+            </datalist>
           </div>
 
           <div style={styles.fieldGroup}>
-            <label style={styles.label}>Recent PRs</label>
-            {historyLoading ? (
-              <div style={styles.skeleton}>Loading PRs...</div>
-            ) : prOptions.length > 0 ? (
-              <select
-                style={{ ...styles.select, maxWidth: 220 }}
-                value={prNumber}
-                onChange={(e) => setPrNumber(e.target.value)}
-                disabled={loading}
-              >
-                {prOptions.map((p) => (
-                  <option key={p.prNumber} value={String(p.prNumber)}>
-                    #{p.prNumber}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                style={{ ...styles.input, maxWidth: 220 }}
-                type="text"
-                value={prNumber}
-                onChange={e => setPrNumber(e.target.value)}
-                placeholder="e.g. 1234"
-                disabled={loading}
-                onFocus={e => e.target.style.borderColor = 'var(--border-focus)'}
-                onBlur={e => e.target.style.borderColor = 'var(--border)'}
-              />
-            )}
+            <label style={styles.label}>Pull Request Number</label>
+            {historyLoading && <div style={styles.skeleton}>Loading PR suggestions...</div>}
+            <input
+              style={{ ...styles.input, maxWidth: 220 }}
+              type="text"
+              value={prNumber}
+              onChange={(e) => setPrNumber(e.target.value)}
+              placeholder="e.g. 1234"
+              disabled={loading}
+              list="pr-suggestions"
+              onFocus={e => e.target.style.borderColor = 'var(--border-focus)'}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'}
+            />
+            <datalist id="pr-suggestions">
+              {prOptions.map((p) => (
+                <option key={p.prNumber} value={String(p.prNumber)}>
+                  #{p.prNumber}
+                </option>
+              ))}
+            </datalist>
           </div>
 
           {error && <p style={styles.errorText}>{error}</p>}
