@@ -27,6 +27,10 @@ app.use('/api/', limiter);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/github', githubRoutes);
 
+app.get('/', (req, res) => {
+  res.type('html').send(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Auto Doc Updater API</title></head><body><p>This URL is the <strong>API only</strong>. Open your Vercel site for the web app.</p><p>Try <a href="/api/health">/api/health</a>.</p></body></html>`);
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
@@ -38,10 +42,19 @@ app.get('/api/health', (req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error('[Error]', err.message);
-  res.status(err.status || 500).json({
-    error: err.message || 'Internal server error'
-  });
+  console.error('[Error]', err);
+  let msg = err?.message || 'Internal server error';
+  if (typeof msg !== 'string') {
+    try {
+      msg = JSON.stringify(msg);
+    } catch {
+      msg = 'Internal server error';
+    }
+  }
+  if (!msg || msg === '[object Object]') {
+    msg = 'Internal server error';
+  }
+  res.status(err.status || 500).json({ error: msg });
 });
 
 app.listen(PORT, () => {

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { runAnalysis, createDocsPR as apiCreatePR } from '../utils/api.js';
+import { runAnalysis, createDocsPR as apiCreatePR, formatApiErrorMessage } from '../utils/api.js';
 import { supabase } from '../lib/supabaseClient.js';
 
 export const STAGES = {
@@ -105,9 +105,16 @@ export function useAnalysis() {
     } catch (err) {
       clearTimeout(timer1);
       clearTimeout(timer2);
-      setError(err.message);
+      let msg =
+        err instanceof Error
+          ? err.message
+          : formatApiErrorMessage(err) || 'Something went wrong.';
+      if (msg === '[object Object]') {
+        msg = formatApiErrorMessage(err) || 'Something went wrong.';
+      }
+      setError(msg);
       setStage(STAGES.ERROR);
-      toast.error(err.message);
+      toast.error(msg);
     }
   }, [persistRun]);
 
@@ -169,7 +176,11 @@ export function useAnalysis() {
       setCreatedPR(res);
       toast.success('PR created on GitHub!');
     } catch (err) {
-      toast.error(err.message);
+      const msg =
+        err instanceof Error
+          ? err.message
+          : formatApiErrorMessage(err) || 'PR creation failed.';
+      toast.error(msg);
     } finally {
       setPrCreating(false);
     }
