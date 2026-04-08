@@ -8,9 +8,24 @@ import githubRoutes from './routes/github.js';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// Middleware — allow explicit FRONTEND_URL(s) plus any *.vercel.app (production + preview).
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin(origin, cb) {
+    if (!origin) return cb(null, true);
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    try {
+      const host = new URL(origin).hostname;
+      if (host === 'localhost' || host.endsWith('.vercel.app')) return cb(null, true);
+    } catch {
+      /* invalid origin */
+    }
+    cb(null, false);
+  },
   credentials: true
 }));
 app.use(express.json({ limit: '2mb' }));

@@ -47,9 +47,13 @@ function normalizeAxiosResponseData(data) {
 function axiosErrorToMessage(err) {
   const raw = err.response?.data;
   const data = normalizeAxiosResponseData(raw);
+  const fromBody =
+    data != null ? formatApiErrorMessage(data.error ?? data) : '';
+  const fromAxios =
+    typeof err.message === 'string' && err.message ? err.message : '';
   let message =
-    (data != null && formatApiErrorMessage(data.error ?? data)) ||
-    err.message ||
+    fromBody ||
+    fromAxios ||
     'An unexpected error occurred.';
   if (message === '[object Object]' || typeof message === 'object') {
     message =
@@ -67,15 +71,41 @@ function axiosErrorToMessage(err) {
   return String(message);
 }
 
-const apiBase =
-  typeof process.env.NEXT_PUBLIC_API_URL === 'string' &&
-  process.env.NEXT_PUBLIC_API_URL.length > 0
-    ? `${process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')}/api`
-    : '/api';
+/** Use in catch blocks so UI never shows "[object Object]". */
+export function safeErrorMessage(err) {
+  if (err == null) return 'Unknown error.';
+  if (typeof err === 'string') {
+    return err === '[object Object]' ? 'Unknown error.' : err;
+  }
+  if (err instanceof Error) {
+    const m = err.message;
+    return m && m !== '[object Object]' ? m : 'Unknown error.';
+  }
+  const formatted = formatApiErrorMessage(err);
+  if (formatted && formatted !== '[object Object]') return formatted;
+  try {
+    const j = JSON.stringify(err, Object.getOwnPropertyNames(err));
+    if (j && j !== '{}' && j.length < 1500) return j;
+  } catch {
+    /* ignore */
+  }
+  return 'Unknown error.';
+}
+
+function clientApiBase() {
+  const u =
+    typeof process.env.NEXT_PUBLIC_API_URL === 'string'
+      ? process.env.NEXT_PUBLIC_API_URL.trim()
+      : '';
+  // Production: call Render directly so long-running /analysis/run is not cut off by Vercel proxy limits.
+  // Local: omit NEXT_PUBLIC_API_URL and use same-origin /api (next.config rewrites → localhost:3001).
+  if (u) return `${u.replace(/\/$/, '')}/api`;
+  return '/api';
+}
 
 const api = axios.create({
-  baseURL: apiBase,
-  timeout: 60000,
+  baseURL: clientApiBase(),
+  timeout: 120000,
 });
 
 api.interceptors.response.use(

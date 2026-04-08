@@ -1,4 +1,11 @@
 /** @type {import('next').NextConfig} */
+// Proxy /api → backend. Set BACKEND_URL or NEXT_PUBLIC_API_URL in Vercel for Production *and* Preview.
+const backendOrigin = (
+  process.env.BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  'http://localhost:3001'
+).replace(/\/$/, '');
+
 const nextConfig = {
   reactStrictMode: true,
   webpack: (config) => {
@@ -18,7 +25,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:3001/api/:path*',
+        destination: `${backendOrigin}/api/:path*`,
       },
     ];
   },

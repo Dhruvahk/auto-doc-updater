@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { runAnalysis, createDocsPR as apiCreatePR, formatApiErrorMessage } from '../utils/api.js';
+import { runAnalysis, createDocsPR as apiCreatePR, safeErrorMessage } from '../utils/api.js';
 import { supabase } from '../lib/supabaseClient.js';
 
 export const STAGES = {
@@ -47,7 +47,7 @@ export function useAnalysis() {
         .single();
       if (runErr || !runRow?.id) return null;
 
-      const rows = (data.analysis.sections || []).map((s) => ({
+      const rows = (data?.analysis?.sections || []).map((s) => ({
         run_id: runRow.id,
         heading: s.heading || 'Untitled Section',
         old_text: s.oldText || '',
@@ -97,21 +97,18 @@ export function useAnalysis() {
       setRunId(newRunId);
       setStage(STAGES.DONE);
       setStageLabel(STAGE_LABELS[STAGES.DONE]);
-      if ((data.analysis.sections || []).length === 0) {
+      const sections = Array.isArray(data?.analysis?.sections)
+        ? data.analysis.sections
+        : [];
+      if (sections.length === 0) {
         toast.success('No README updates needed for this PR.');
       } else {
-        toast.success(`Found ${data.analysis.sections.length} sections to update`);
+        toast.success(`Found ${sections.length} sections to update`);
       }
     } catch (err) {
       clearTimeout(timer1);
       clearTimeout(timer2);
-      let msg =
-        err instanceof Error
-          ? err.message
-          : formatApiErrorMessage(err) || 'Something went wrong.';
-      if (msg === '[object Object]') {
-        msg = formatApiErrorMessage(err) || 'Something went wrong.';
-      }
+      const msg = safeErrorMessage(err);
       setError(msg);
       setStage(STAGES.ERROR);
       toast.error(msg);
@@ -176,11 +173,7 @@ export function useAnalysis() {
       setCreatedPR(res);
       toast.success('PR created on GitHub!');
     } catch (err) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : formatApiErrorMessage(err) || 'PR creation failed.';
-      toast.error(msg);
+      toast.error(safeErrorMessage(err) || 'PR creation failed.');
     } finally {
       setPrCreating(false);
     }
