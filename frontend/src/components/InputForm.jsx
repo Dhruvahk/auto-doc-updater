@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { GitPullRequest, Search } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient.js';
 
 const EXAMPLES = [
   { repo: 'https://github.com/expressjs/express', pr: '5765', label: 'expressjs/express' },
@@ -11,6 +12,126 @@ export default function InputForm({ onSubmit, loading }) {
   const [repoUrl, setRepoUrl] = useState('');
   const [prNumber, setPrNumber] = useState('');
   const [error, setError] = useState('');
+
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [runs, setRuns] = useState([]); // analysis_runs rows for the current user
+  const [repoOptions, setRepoOptions] = useState([]); // [{ repoUrl, label, lastUsedAt, lastPrNumber }]
+  const [prOptions, setPrOptions] = useState([]); // [{ prNumber, usedAt }]
+
+  function formatRepoLabel(url) {
+    try {
+      const match = url
+        .trim()
+        .replace(/\.git$/, '')
+        .match(/github\.com\/([^/]+)\/([^/]+)/);
+      if (!match) return url;
+      return `${match[1]}/${match[2]}`;
+    } catch {
+      return url;
+    }
+  }
+
+  // Load saved run history (drives repo dropdown + recent PR dropdown).
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setHistoryLoading(true);
+      setError('');
+
+      try {
+        const { data: userRes } = await supabase.auth.getUser();
+        const userId = userRes?.user?.id;
+        if (!userId) {
+          if (!cancelled) setRuns([]);
+          return;
+        }
+
+        const { data } = await supabase
+          .from('analysis_runs')
+          .select('repo_url, pr_number, created_at')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(200);
+
+        if (cancelled) return;
+        const rows = data || [];
+        setRuns(rows);
+
+        // Repos: first time we see each repo in descending created_at order => most recent use.
+        const repoMap = new Map();
+        for (const r of rows) {
+          if (!r?.repo_url || repoMap.has(r.repo_url)) continue;
+          repoMap.set(r.repo_url, r);
+        }
+
+        const repos = Array.from(repoMap.entries()).map(([url, lastRun]) => ({
+          repoUrl: url,
+          label: formatRepoLabel(url),
+          lastUsedAt: lastRun.created_at,
+          lastPrNumber: lastRun.pr_number,
+        }));
+
+        // Sort by most recent usage
+        repos.sort((a, b) => new Date(b.lastUsedAt) - new Date(a.lastUsedAt));
+        setRepoOptions(repos);
+
+        if (repos.length > 0) {
+          setRepoUrl(repos[0].repoUrl);
+          setPrNumber(String(repos[0].lastPrNumber));
+        }
+      } catch (e) {
+        if (cancelled) return;
+        setError(e?.message || 'Failed to load your history.');
+        setRuns([]);
+        setRepoOptions([]);
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // PR options for the currently selected repo.
+  useEffect(() => {
+    if (!repoUrl) {
+      setPrOptions([]);
+      return;
+    }
+
+    const related = (runs || [])
+      .filter((r) => r?.repo_url === repoUrl)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    // Deduplicate PR numbers (latest run for the same PR first).
+    const seen = new Set();
+    const unique = [];
+    for (const r of related) {
+      const num = r?.pr_number;
+      if (num == null) continue;
+      if (seen.has(num)) continue;
+      seen.add(num);
+      unique.push({ prNumber: num, usedAt: r.created_at });
+      if (unique.length >= 6) break;
+    }
+
+    setPrOptions(unique);
+
+    if (unique.length > 0) {
+      setPrNumber(String(unique[0].prNumber));
+    } else {
+      setPrNumber('');
+    }
+  }, [repoUrl, runs]);
+
+  const canShowExamples = useMemo(
+    () => !historyLoading && repoOptions.length === 0,
+    [historyLoading, repoOptions.length]
+  );
 
   function validate() {
     if (!repoUrl.trim()) return 'GitHub repository URL is required.';
@@ -44,31 +165,65 @@ export default function InputForm({ onSubmit, loading }) {
 
         <form onSubmit={handleSubmit}>
           <div style={styles.fieldGroup}>
-            <label style={styles.label}>GitHub Repository URL</label>
-            <input
-              style={styles.input}
-              type="text"
-              value={repoUrl}
-              onChange={e => setRepoUrl(e.target.value)}
-              placeholder="https://github.com/owner/repo"
-              disabled={loading}
-              onFocus={e => e.target.style.borderColor = 'var(--border-focus)'}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
-            />
+            <label style={styles.label}>Repository</label>
+            {historyLoading ? (
+              <div style={styles.skeleton}>Loading your repos...</div>
+            ) : repoOptions.length > 0 ? (
+              <select
+                style={styles.select}
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                disabled={loading}
+              >
+                {repoOptions.map((r) => (
+                  <option key={r.repoUrl} value={r.repoUrl}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                style={styles.input}
+                type="text"
+                value={repoUrl}
+                onChange={e => setRepoUrl(e.target.value)}
+                placeholder="https://github.com/owner/repo"
+                disabled={loading}
+                onFocus={e => e.target.style.borderColor = 'var(--border-focus)'}
+                onBlur={e => e.target.style.borderColor = 'var(--border)'}
+              />
+            )}
           </div>
 
           <div style={styles.fieldGroup}>
-            <label style={styles.label}>Pull Request Number</label>
-            <input
-              style={{ ...styles.input, maxWidth: 180 }}
-              type="text"
-              value={prNumber}
-              onChange={e => setPrNumber(e.target.value)}
-              placeholder="e.g. 1234"
-              disabled={loading}
-              onFocus={e => e.target.style.borderColor = 'var(--border-focus)'}
-              onBlur={e => e.target.style.borderColor = 'var(--border)'}
-            />
+            <label style={styles.label}>Recent PRs</label>
+            {historyLoading ? (
+              <div style={styles.skeleton}>Loading PRs...</div>
+            ) : prOptions.length > 0 ? (
+              <select
+                style={{ ...styles.select, maxWidth: 220 }}
+                value={prNumber}
+                onChange={(e) => setPrNumber(e.target.value)}
+                disabled={loading}
+              >
+                {prOptions.map((p) => (
+                  <option key={p.prNumber} value={String(p.prNumber)}>
+                    #{p.prNumber}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                style={{ ...styles.input, maxWidth: 220 }}
+                type="text"
+                value={prNumber}
+                onChange={e => setPrNumber(e.target.value)}
+                placeholder="e.g. 1234"
+                disabled={loading}
+                onFocus={e => e.target.style.borderColor = 'var(--border-focus)'}
+                onBlur={e => e.target.style.borderColor = 'var(--border)'}
+              />
+            )}
           </div>
 
           {error && <p style={styles.errorText}>{error}</p>}
@@ -86,23 +241,25 @@ export default function InputForm({ onSubmit, loading }) {
           </button>
         </form>
 
-        <div style={styles.examples}>
-          <span style={styles.examplesLabel}>Try an example:</span>
-          <div style={styles.chips}>
-            {EXAMPLES.map(ex => (
-              <button
-                key={ex.label}
-                style={styles.chip}
-                onClick={() => loadExample(ex)}
-                disabled={loading}
-                onMouseEnter={e => e.target.style.borderColor = 'var(--indigo)'}
-                onMouseLeave={e => e.target.style.borderColor = 'var(--border)'}
-              >
-                {ex.label}
-              </button>
-            ))}
+        {canShowExamples && (
+          <div style={styles.examples}>
+            <span style={styles.examplesLabel}>Try an example:</span>
+            <div style={styles.chips}>
+              {EXAMPLES.map(ex => (
+                <button
+                  key={ex.label}
+                  style={styles.chip}
+                  onClick={() => loadExample(ex)}
+                  disabled={loading}
+                  onMouseEnter={e => e.target.style.borderColor = 'var(--indigo)'}
+                  onMouseLeave={e => e.target.style.borderColor = 'var(--border)'}
+                >
+                  {ex.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div style={styles.note}>
@@ -141,6 +298,24 @@ const styles = {
     padding: '0 12px', height: 40, color: 'var(--text-primary)',
     fontFamily: 'var(--font-sans)', fontSize: 14, outline: 'none',
     transition: 'border-color 0.15s'
+  },
+  select: {
+    width: '100%', background: 'var(--bg-input)',
+    border: '0.5px solid var(--border)', borderRadius: 'var(--radius)',
+    padding: '0 12px', height: 40, color: 'var(--text-primary)',
+    fontFamily: 'var(--font-sans)', fontSize: 14, outline: 'none',
+    transition: 'border-color 0.15s'
+  },
+  skeleton: {
+    width: '100%',
+    height: 40,
+    borderRadius: 'var(--radius)',
+    background: 'rgba(148,163,184,0.10)',
+    border: '1px solid rgba(148,163,184,0.20)',
+    display: 'flex',
+    alignItems: 'center',
+    padding: '0 12px',
+    color: 'var(--text-muted)'
   },
   errorText: { fontSize: 13, color: 'var(--red)', marginBottom: 12 },
   btnPrimary: {
